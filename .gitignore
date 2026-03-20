@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.wrangler/
+.publish/
+.ghpages/
 .env
 .env.local
 .env.*.local
