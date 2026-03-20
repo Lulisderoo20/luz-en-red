@@ -1,0 +1,6 @@
+name = "luz-en-red"
+pages_build_output_dir = "./dist"
+
+[vars]
+VITE_ROUTER_MODE = "browser"
+VITE_BASE_PATH = "/"
