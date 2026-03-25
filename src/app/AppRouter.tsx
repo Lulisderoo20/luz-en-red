@@ -18,8 +18,9 @@ import {
   WelcomePage,
 } from '@/features/auth/AuthPages';
 import { AdminPage } from '@/features/admin/AdminPage';
+import { AgendaPage } from '@/features/agenda/AgendaPage';
 import { FeedPage, CreatePostPage, PostDetailPage } from '@/features/feed/FeedPages';
-import { GroupDetailPage, GroupsPage } from '@/features/groups/GroupPages';
+import { CreateGroupPage, GroupDetailPage, GroupsPage } from '@/features/groups/GroupPages';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { OnboardingPage } from '@/features/onboarding/OnboardingPage';
 import {
@@ -152,9 +153,11 @@ function RoutedApp() {
         <Route path="feed" element={<FeedPage />} />
         <Route path="feed/new" element={<CreatePostPage />} />
         <Route path="posts/:postId" element={<PostDetailPage />} />
+        <Route path="agenda" element={<AgendaPage />} />
         <Route path="prayers" element={<PrayerRequestsPage />} />
         <Route path="prayers/new" element={<CreatePrayerPage />} />
         <Route path="groups" element={<GroupsPage />} />
+        <Route path="groups/new" element={<CreateGroupPage />} />
         <Route path="groups/:slug" element={<GroupDetailPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '@/app/AppContext';
 import { PostCard } from '@/components/feed/PostCard';
 import { Button } from '@/components/common/Button';
+import { ImagePickerField } from '@/components/common/ImagePickerField';
 import { InputField, SelectField, TextareaField } from '@/components/common/FormFields';
 import { Card, EmptyState, LoadingState, MessageBanner, SectionHeader } from '@/components/common/Surface';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -217,10 +218,12 @@ export function CreatePostPage() {
               onChange={(e) => setCategory(e.target.value)}
             />
           </div>
-          <InputField
-            label="Imagen (URL)"
+          <ImagePickerField
+            label="Imagen"
             value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
+            onChange={setImageUrl}
+            hint="Podés pegar una URL o subir una imagen desde tu dispositivo."
+            previewLabel="Imagen de la publicación"
           />
           <SelectField label="Grupo (opcional)" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
             <option value="">Feed general</option>

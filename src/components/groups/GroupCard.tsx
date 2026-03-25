@@ -35,7 +35,13 @@ export function GroupCard({ group, onJoin }: GroupCardProps) {
           <Link className="button button--soft" to={`/app/groups/${group.slug}`}>
             Ver grupo
           </Link>
-          {!group.joinedByMe ? <Button onClick={onJoin}>Unirme</Button> : <Button variant="secondary">Ya sos parte</Button>}
+          {!group.joinedByMe ? (
+            <Button onClick={onJoin}>Unirme</Button>
+          ) : (
+            <Button variant="secondary" disabled>
+              Ya sos parte
+            </Button>
+          )}
         </div>
       </div>
     </Card>

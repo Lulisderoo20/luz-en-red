@@ -282,6 +282,25 @@ create table if not exists public.prayer_comments (
   constraint prayer_comments_content_length check (char_length(content) between 2 and 1200)
 );
 
+create table if not exists public.agenda_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  group_id uuid references public.groups (id) on delete set null,
+  title text not null,
+  description text,
+  location text,
+  category text not null default 'personal',
+  starts_at timestamptz not null,
+  ends_at timestamptz,
+  status text not null default 'scheduled',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now()),
+  constraint agenda_items_title_length check (char_length(title) between 3 and 160),
+  constraint agenda_items_category_check check (category in ('personal', 'church', 'group', 'service', 'study')),
+  constraint agenda_items_status_check check (status in ('scheduled', 'completed')),
+  constraint agenda_items_dates_check check (ends_at is null or ends_at >= starts_at)
+);
+
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   recipient_id uuid not null references public.profiles (id) on delete cascade,
@@ -363,6 +382,7 @@ create index if not exists idx_posts_group_created_at on public.posts (group_id,
 create index if not exists idx_post_comments_post_created_at on public.post_comments (post_id, created_at desc);
 create index if not exists idx_prayer_requests_author_created_at on public.prayer_requests (author_id, created_at desc);
 create index if not exists idx_prayer_requests_group_created_at on public.prayer_requests (group_id, created_at desc);
+create index if not exists idx_agenda_items_user_starts_at on public.agenda_items (user_id, starts_at asc);
 create index if not exists idx_notifications_recipient_created_at on public.notifications (recipient_id, created_at desc);
 create index if not exists idx_reports_status_created_at on public.reports (status, created_at desc);
 create index if not exists idx_devotional_content_published_on on public.devotional_content (published_on desc);
@@ -394,6 +414,11 @@ execute procedure public.touch_updated_at();
 
 create trigger prayer_comments_touch_updated_at
 before update on public.prayer_comments
+for each row
+execute procedure public.touch_updated_at();
+
+create trigger agenda_items_touch_updated_at
+before update on public.agenda_items
 for each row
 execute procedure public.touch_updated_at();
 
@@ -600,6 +625,7 @@ alter table public.saved_posts enable row level security;
 alter table public.prayer_requests enable row level security;
 alter table public.prayer_support enable row level security;
 alter table public.prayer_comments enable row level security;
+alter table public.agenda_items enable row level security;
 alter table public.notifications enable row level security;
 alter table public.reports enable row level security;
 alter table public.devotional_content enable row level security;
@@ -719,6 +745,14 @@ to authenticated
 with check (
   public.is_admin_or_moderator()
   or public.is_group_manager(group_id)
+  or (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.groups g
+      where g.id = group_id
+        and g.created_by = auth.uid()
+    )
+  )
   or (
     auth.uid() = user_id
     and exists (
@@ -1054,6 +1088,46 @@ on public.prayer_comments
 for delete
 to authenticated
 using (auth.uid() = author_id or public.is_admin_or_moderator());
+
+drop policy if exists "agenda_items_select" on public.agenda_items;
+create policy "agenda_items_select"
+on public.agenda_items
+for select
+to authenticated
+using (auth.uid() = user_id or public.is_admin_or_moderator());
+
+drop policy if exists "agenda_items_insert" on public.agenda_items;
+create policy "agenda_items_insert"
+on public.agenda_items
+for insert
+to authenticated
+with check (
+  auth.uid() = user_id
+  and (
+    group_id is null
+    or public.is_group_member(group_id)
+    or exists (
+      select 1 from public.groups g
+      where g.id = group_id
+        and g.created_by = auth.uid()
+    )
+  )
+);
+
+drop policy if exists "agenda_items_update" on public.agenda_items;
+create policy "agenda_items_update"
+on public.agenda_items
+for update
+to authenticated
+using (auth.uid() = user_id or public.is_admin_or_moderator())
+with check (auth.uid() = user_id or public.is_admin_or_moderator());
+
+drop policy if exists "agenda_items_delete" on public.agenda_items;
+create policy "agenda_items_delete"
+on public.agenda_items
+for delete
+to authenticated
+using (auth.uid() = user_id or public.is_admin_or_moderator());
 
 drop policy if exists "notifications_select" on public.notifications;
 create policy "notifications_select"

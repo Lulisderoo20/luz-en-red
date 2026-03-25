@@ -1,4 +1,4 @@
-import { Bell, HeartHandshake, Home, Search, UserRound, UsersRound } from 'lucide-react';
+import { Bell, CalendarDays, HeartHandshake, Home, Search, UserRound, UsersRound } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useApp } from '@/app/AppContext';
@@ -7,6 +7,7 @@ import { Card } from '@/components/common/Surface';
 
 const navItems = [
   { to: '/app/feed', label: 'Inicio', icon: Home },
+  { to: '/app/agenda', label: 'Agenda', icon: CalendarDays },
   { to: '/app/prayers', label: 'Oración', icon: HeartHandshake },
   { to: '/app/groups', label: 'Grupos', icon: UsersRound },
   { to: '/app/search', label: 'Explorar', icon: Search },

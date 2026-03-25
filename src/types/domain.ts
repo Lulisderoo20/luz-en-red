@@ -27,6 +27,8 @@ export type PostType =
 export type ReactionType = 'amen' | 'inspired' | 'with_you' | 'praying';
 export type PrayerVisibility = 'public' | 'group';
 export type PrayerStatus = 'active' | 'answered';
+export type AgendaItemCategory = 'personal' | 'church' | 'group' | 'service' | 'study';
+export type AgendaItemStatus = 'scheduled' | 'completed';
 export type GroupRole = 'member' | 'moderator' | 'owner';
 export type NotificationType =
   | 'new_follower'
@@ -118,6 +120,21 @@ export interface PrayerRequest {
   comments: PrayerComment[];
   isSensitive: boolean;
   createdAt: string;
+}
+
+export interface AgendaItem {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  category: AgendaItemCategory;
+  startsAt: string;
+  endsAt: string | null;
+  status: AgendaItemStatus;
+  groupId?: string | null;
+  groupName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GroupSummary {
@@ -226,6 +243,24 @@ export interface CreatePrayerPayload {
   visibility: PrayerVisibility;
   groupId?: string;
   isSensitive?: boolean;
+}
+
+export interface CreateAgendaItemPayload {
+  title: string;
+  description?: string;
+  location?: string;
+  category: AgendaItemCategory;
+  startsAt: string;
+  endsAt?: string;
+  groupId?: string;
+}
+
+export interface CreateGroupPayload {
+  name: string;
+  description: string;
+  coverImageUrl?: string;
+  interestTag?: string;
+  isPrivate?: boolean;
 }
 
 export interface UpdateProfilePayload extends OnboardingPayload {}

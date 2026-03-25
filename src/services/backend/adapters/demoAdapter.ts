@@ -2,8 +2,11 @@ import { reactionLabels, slugify } from '@/lib/format';
 import { assertSafeText } from '@/lib/moderation';
 import { spiritualInterests } from '@/types/domain';
 import {
+  AgendaItem,
   AdminDashboard,
   AppSession,
+  CreateAgendaItemPayload,
+  CreateGroupPayload,
   CreatePostPayload,
   CreatePrayerPayload,
   DevotionalContent,
@@ -24,6 +27,7 @@ import {
 import { BackendAdapter } from '@/services/backend/types';
 import {
   createDefaultDemoStore,
+  DemoAgendaItemRecord,
   DemoDevotionalRecord,
   DemoGroupRecord,
   DemoNotificationRecord,
@@ -31,9 +35,12 @@ import {
   DemoPrayerRequestRecord,
   DemoProfileRecord,
   DemoStore,
+  migrateDemoStore,
 } from '@/services/seed/demoData';
 
 const STORAGE_KEY = 'luz-en-red-demo-store-v1';
+const STORAGE_VERSION_KEY = 'luz-en-red-demo-store-version';
+const CURRENT_STORE_VERSION = '2026-03-25-auth-refresh';
 const listeners = new Set<() => void>();
 
 function createId(prefix: string) {
@@ -46,6 +53,7 @@ function nowIso() {
 
 function readStore(): DemoStore {
   const serialized = localStorage.getItem(STORAGE_KEY);
+  const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
 
   if (!serialized) {
     const initialStore = createDefaultDemoStore();
@@ -54,7 +62,14 @@ function readStore(): DemoStore {
   }
 
   try {
-    return JSON.parse(serialized) as DemoStore;
+    const store = migrateDemoStore(JSON.parse(serialized));
+
+    if (storedVersion !== CURRENT_STORE_VERSION) {
+      store.currentUserId = null;
+    }
+
+    writeStore(store);
+    return store;
   } catch {
     const initialStore = createDefaultDemoStore();
     writeStore(initialStore);
@@ -64,6 +79,7 @@ function readStore(): DemoStore {
 
 function writeStore(store: DemoStore) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORE_VERSION);
 }
 
 function emitAuthChange() {
@@ -294,6 +310,25 @@ function toDevotional(record: DemoDevotionalRecord): DevotionalContent {
   };
 }
 
+function toAgendaItem(store: DemoStore, item: DemoAgendaItemRecord): AgendaItem {
+  const group = item.groupId ? store.groups.find((entry) => entry.id === item.groupId) : null;
+
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    location: item.location,
+    category: item.category,
+    startsAt: item.startsAt,
+    endsAt: item.endsAt,
+    status: item.status,
+    groupId: item.groupId,
+    groupName: group?.name ?? null,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 function ensureUniqueUsername(store: DemoStore, username: string, currentUserId?: string) {
   const normalized = username.toLowerCase();
   const exists = store.profiles.some(
@@ -303,6 +338,19 @@ function ensureUniqueUsername(store: DemoStore, username: string, currentUserId?
   if (exists) {
     throw new Error('Ese nombre de usuario ya está en uso.');
   }
+}
+
+function buildUniqueGroupSlug(store: DemoStore, value: string) {
+  const baseSlug = slugify(value).slice(0, 54) || `grupo-${Date.now()}`;
+  let candidate = baseSlug;
+  let counter = 1;
+
+  while (store.groups.some((group) => group.slug === candidate)) {
+    candidate = `${baseSlug.slice(0, 48)}-${counter}`;
+    counter += 1;
+  }
+
+  return candidate;
 }
 
 function createNotification(
@@ -407,7 +455,43 @@ export class DemoAdapter implements BackendAdapter {
 
   async signInWithGoogle(): Promise<void> {
     const store = readStore();
-    store.currentUserId = '11111111-1111-1111-1111-111111111111';
+    const existingAccount = store.accounts.find((account) => account.email === 'google-demo@luzenred.app');
+
+    if (existingAccount) {
+      store.currentUserId = existingAccount.userId;
+      writeStore(store);
+      emitAuthChange();
+      return;
+    }
+
+    const userId = crypto.randomUUID();
+    const createdAt = nowIso();
+    const defaultUsername = `google-${Date.now().toString().slice(-6)}`;
+
+    store.accounts.push({
+      userId,
+      email: 'google-demo@luzenred.app',
+      password: 'google-oauth',
+    });
+    store.profiles.push({
+      id: userId,
+      email: 'google-demo@luzenred.app',
+      displayName: '',
+      username: defaultUsername,
+      avatarUrl: null,
+      bio: null,
+      denomination: null,
+      churchName: null,
+      location: null,
+      favoriteVerse: null,
+      interests: [spiritualInterests[0]],
+      role: 'member',
+      isOnboardingComplete: false,
+      isSuspended: false,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    store.currentUserId = userId;
     writeStore(store);
     emitAuthChange();
   }
@@ -778,6 +862,95 @@ export class DemoAdapter implements BackendAdapter {
     return toPrayerRequest(store, prayer, userId);
   }
 
+  async getAgendaItems(userId: string): Promise<AgendaItem[]> {
+    const store = readStore();
+
+    return store.agendaItems
+      .filter((item) => item.userId === userId)
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+      .map((item) => toAgendaItem(store, item));
+  }
+
+  async createAgendaItem(userId: string, payload: CreateAgendaItemPayload): Promise<AgendaItem> {
+    const store = readStore();
+
+    if (payload.groupId && !isGroupMember(store, payload.groupId, userId)) {
+      throw new Error('Necesitás pertenecer al grupo para vincularlo a tu agenda.');
+    }
+
+    const title = payload.title.trim();
+    if (!title) {
+      throw new Error('Escribí un título para este compromiso.');
+    }
+
+    assertSafeText(title);
+    if (payload.description?.trim()) {
+      assertSafeText(payload.description);
+    }
+
+    const startsAt = new Date(payload.startsAt);
+    if (Number.isNaN(startsAt.getTime())) {
+      throw new Error('Elegí una fecha y hora válidas.');
+    }
+
+    const endsAt = payload.endsAt ? new Date(payload.endsAt) : null;
+    if (endsAt && Number.isNaN(endsAt.getTime())) {
+      throw new Error('La hora de cierre no es válida.');
+    }
+
+    if (endsAt && endsAt.getTime() < startsAt.getTime()) {
+      throw new Error('La hora de cierre no puede ser anterior al inicio.');
+    }
+
+    const createdAt = nowIso();
+    const item: DemoAgendaItemRecord = {
+      id: createId('agenda'),
+      userId,
+      groupId: payload.groupId ?? null,
+      title,
+      description: payload.description?.trim() || null,
+      location: payload.location?.trim() || null,
+      category: payload.category,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt ? endsAt.toISOString() : null,
+      status: 'scheduled',
+      createdAt,
+      updatedAt: createdAt,
+    };
+
+    store.agendaItems.push(item);
+    writeStore(store);
+
+    return toAgendaItem(store, item);
+  }
+
+  async setAgendaItemStatus(
+    userId: string,
+    agendaItemId: string,
+    status: AgendaItem['status'],
+  ): Promise<AgendaItem> {
+    const store = readStore();
+    const item = store.agendaItems.find((entry) => entry.id === agendaItemId && entry.userId === userId);
+
+    if (!item) {
+      throw new Error('No encontramos ese item de agenda.');
+    }
+
+    item.status = status;
+    item.updatedAt = nowIso();
+    writeStore(store);
+
+    return toAgendaItem(store, item);
+  }
+
+  async deleteAgendaItem(userId: string, agendaItemId: string): Promise<void> {
+    const store = readStore();
+    store.agendaItems = store.agendaItems.filter(
+      (entry) => !(entry.id === agendaItemId && entry.userId === userId),
+    );
+    writeStore(store);
+  }
+
   async getGroups(viewerId: string): Promise<GroupSummary[]> {
     const store = readStore();
 
@@ -815,6 +988,45 @@ export class DemoAdapter implements BackendAdapter {
       posts,
       prayerRequests,
     };
+  }
+
+  async createGroup(userId: string, payload: CreateGroupPayload): Promise<GroupSummary> {
+    const store = readStore();
+    const name = payload.name.trim();
+    const description = payload.description.trim();
+
+    if (!name || !description) {
+      throw new Error('Completá el nombre y la descripción del grupo.');
+    }
+
+    assertSafeText(name);
+    assertSafeText(description);
+
+    const createdAt = nowIso();
+    const groupId = createId('group');
+    const group: DemoGroupRecord = {
+      id: groupId,
+      slug: buildUniqueGroupSlug(store, name),
+      name,
+      description,
+      coverImageUrl: payload.coverImageUrl?.trim() || null,
+      interestTag: payload.interestTag?.trim() || null,
+      isPrivate: Boolean(payload.isPrivate),
+      createdBy: userId,
+      createdAt,
+      updatedAt: createdAt,
+    };
+
+    store.groups.unshift(group);
+    store.groupMembers.push({
+      groupId,
+      userId,
+      role: 'owner',
+      joinedAt: createdAt,
+    });
+    writeStore(store);
+
+    return toGroupSummary(store, group, userId);
   }
 
   async joinGroup(userId: string, groupId: string): Promise<GroupSummary> {

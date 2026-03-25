@@ -1,6 +1,9 @@
 import {
+  AgendaItem,
   AdminDashboard,
   AppSession,
+  CreateAgendaItemPayload,
+  CreateGroupPayload,
   CreatePostPayload,
   CreatePrayerPayload,
   DevotionalContent,
@@ -43,8 +46,13 @@ export interface BackendAdapter {
   togglePrayerSupport(userId: string, prayerRequestId: string): Promise<PrayerRequest>;
   addPrayerComment(userId: string, prayerRequestId: string, content: string): Promise<PrayerRequest>;
   markPrayerAnswered(userId: string, prayerRequestId: string): Promise<PrayerRequest>;
+  getAgendaItems(userId: string): Promise<AgendaItem[]>;
+  createAgendaItem(userId: string, payload: CreateAgendaItemPayload): Promise<AgendaItem>;
+  setAgendaItemStatus(userId: string, agendaItemId: string, status: AgendaItem['status']): Promise<AgendaItem>;
+  deleteAgendaItem(userId: string, agendaItemId: string): Promise<void>;
   getGroups(viewerId: string): Promise<GroupSummary[]>;
   getGroupBySlug(viewerId: string, slug: string): Promise<GroupDetail | null>;
+  createGroup(userId: string, payload: CreateGroupPayload): Promise<GroupSummary>;
   joinGroup(userId: string, groupId: string): Promise<GroupSummary>;
   leaveGroup(userId: string, groupId: string): Promise<void>;
   followUser(userId: string, targetUserId: string): Promise<UserProfile>;

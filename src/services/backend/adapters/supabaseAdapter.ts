@@ -4,8 +4,11 @@ import { env } from '@/lib/env';
 import { reactionLabels } from '@/lib/format';
 import { assertSafeText } from '@/lib/moderation';
 import {
+  AgendaItem,
   AdminDashboard,
   AppSession,
+  CreateAgendaItemPayload,
+  CreateGroupPayload,
   CreatePostPayload,
   CreatePrayerPayload,
   DevotionalContent,
@@ -45,6 +48,10 @@ function ensureNoError(value: { error: { message: string } | null }) {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export class SupabaseAdapter implements BackendAdapter {
   mode: 'supabase' = 'supabase';
   private supabase: SupabaseClient;
@@ -57,6 +64,64 @@ export class SupabaseAdapter implements BackendAdapter {
         flowType: 'pkce',
       },
     });
+  }
+
+  private getAuthRedirectUrl() {
+    if (env.supabaseRedirectUrl) {
+      return env.supabaseRedirectUrl;
+    }
+
+    const basePath = env.basePath === '/' ? '' : env.basePath.replace(/\/$/, '');
+    const baseUrl = `${window.location.origin}${basePath}`;
+    return env.routerMode === 'browser'
+      ? `${baseUrl}/auth/callback`
+      : `${baseUrl}#/auth/callback`;
+  }
+
+  private async getProfileWithRetry(userId: string, viewerId?: string) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const profile = await this.getProfileById(userId, viewerId);
+      if (profile) {
+        return profile;
+      }
+
+      if (attempt < 3) {
+        await sleep(250 * (attempt + 1));
+      }
+    }
+
+    return null;
+  }
+
+  private async getSessionForUser(userId: string): Promise<AppSession> {
+    return {
+      mode: 'supabase',
+      user: await this.getProfileWithRetry(userId, userId),
+    };
+  }
+
+  private async buildUniqueGroupSlug(value: string) {
+    const baseSlug = value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 54) || `grupo-${Date.now()}`;
+
+    let candidate = baseSlug;
+    let counter = 1;
+
+    while (true) {
+      const result = await this.supabase.from('groups').select('id').eq('slug', candidate).maybeSingle();
+      const row = throwIfError(result) as Row | null;
+      if (!row?.id) {
+        return candidate;
+      }
+
+      candidate = `${baseSlug.slice(0, 48)}-${counter}`;
+      counter += 1;
+    }
   }
 
   private async fetchProfilesMap(ids: string[], viewerId?: string) {
@@ -308,10 +373,7 @@ export class SupabaseAdapter implements BackendAdapter {
       };
     }
 
-    return {
-      mode: 'supabase',
-      user: await this.getProfileById(authUser.id, authUser.id),
-    };
+    return this.getSessionForUser(authUser.id);
   }
 
   onAuthStateChange(callback: () => void) {
@@ -329,6 +391,10 @@ export class SupabaseAdapter implements BackendAdapter {
       throw new Error(result.error.message);
     }
 
+    if (result.data.user) {
+      return this.getSessionForUser(result.data.user.id);
+    }
+
     return this.getSession();
   }
 
@@ -337,7 +403,7 @@ export class SupabaseAdapter implements BackendAdapter {
       email: payload.email,
       password: payload.password,
       options: {
-        emailRedirectTo: env.supabaseRedirectUrl || window.location.origin,
+        emailRedirectTo: this.getAuthRedirectUrl(),
       },
     });
 
@@ -345,16 +411,28 @@ export class SupabaseAdapter implements BackendAdapter {
       throw new Error(result.error.message);
     }
 
-    return this.getSession();
+    if (!result.data.user) {
+      return {
+        mode: 'supabase',
+        user: null,
+      };
+    }
+
+    if (!result.data.session) {
+      return {
+        mode: 'supabase',
+        user: null,
+      };
+    }
+
+    return this.getSessionForUser(result.data.user.id);
   }
 
   async signInWithGoogle(): Promise<void> {
     const result = await this.supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo:
-          env.supabaseRedirectUrl ||
-          `${window.location.origin}${window.location.pathname}#/auth/callback`,
+        redirectTo: this.getAuthRedirectUrl(),
       },
     });
 
@@ -365,9 +443,7 @@ export class SupabaseAdapter implements BackendAdapter {
 
   async requestPasswordReset(email: string): Promise<void> {
     const result = await this.supabase.auth.resetPasswordForEmail(email, {
-      redirectTo:
-        env.supabaseRedirectUrl ||
-        `${window.location.origin}${window.location.pathname}#/auth/callback`,
+      redirectTo: this.getAuthRedirectUrl(),
     });
 
     if (result.error) {
@@ -676,6 +752,99 @@ export class SupabaseAdapter implements BackendAdapter {
     return prayers[0];
   }
 
+  async getAgendaItems(userId: string): Promise<AgendaItem[]> {
+    const result = await this.supabase
+      .from('agenda_items')
+      .select('*')
+      .eq('user_id', userId)
+      .order('starts_at', { ascending: true });
+    const rows = throwIfError(result) as Row[];
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const groupIds = unique(rows.map((row) => row.group_id));
+    const groupsResult =
+      groupIds.length > 0
+        ? await this.supabase.from('groups').select('id, name').in('id', groupIds)
+        : { data: [], error: null };
+    const groups = throwIfError(groupsResult as { data: Row[]; error: { message: string } | null }) as Row[];
+    const groupMap = new Map(groups.map((group) => [group.id, group.name]));
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      location: row.location,
+      category: row.category,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      status: row.status,
+      groupId: row.group_id,
+      groupName: row.group_id ? groupMap.get(row.group_id) ?? null : null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  async createAgendaItem(userId: string, payload: CreateAgendaItemPayload): Promise<AgendaItem> {
+    assertSafeText(payload.title);
+    if (payload.description?.trim()) {
+      assertSafeText(payload.description);
+    }
+
+    const result = await this.supabase
+      .from('agenda_items')
+      .insert({
+        user_id: userId,
+        group_id: payload.groupId ?? null,
+        title: payload.title.trim(),
+        description: payload.description?.trim() || null,
+        location: payload.location?.trim() || null,
+        category: payload.category,
+        starts_at: payload.startsAt,
+        ends_at: payload.endsAt || null,
+      })
+      .select('*')
+      .single();
+
+    const row = throwIfError(result) as Row;
+    const items = await this.getAgendaItems(userId);
+    const item = items.find((entry) => entry.id === row.id);
+    if (!item) {
+      throw new Error('No pudimos recargar tu agenda.');
+    }
+    return item;
+  }
+
+  async setAgendaItemStatus(
+    userId: string,
+    agendaItemId: string,
+    status: AgendaItem['status'],
+  ): Promise<AgendaItem> {
+    throwIfError(
+      await this.supabase
+        .from('agenda_items')
+        .update({ status })
+        .eq('id', agendaItemId)
+        .eq('user_id', userId),
+    );
+
+    const items = await this.getAgendaItems(userId);
+    const item = items.find((entry) => entry.id === agendaItemId);
+    if (!item) {
+      throw new Error('No pudimos recargar tu agenda.');
+    }
+    return item;
+  }
+
+  async deleteAgendaItem(userId: string, agendaItemId: string): Promise<void> {
+    throwIfError(
+      await this.supabase.from('agenda_items').delete().eq('id', agendaItemId).eq('user_id', userId),
+    );
+  }
+
   async getGroups(viewerId: string): Promise<GroupSummary[]> {
     const groupsResult = await this.supabase
       .from('groups')
@@ -755,6 +924,42 @@ export class SupabaseAdapter implements BackendAdapter {
       posts,
       prayerRequests: prayers,
     };
+  }
+
+  async createGroup(userId: string, payload: CreateGroupPayload): Promise<GroupSummary> {
+    assertSafeText(payload.name);
+    assertSafeText(payload.description);
+
+    const slug = await this.buildUniqueGroupSlug(payload.name);
+    const groupResult = await this.supabase
+      .from('groups')
+      .insert({
+        slug,
+        name: payload.name.trim(),
+        description: payload.description.trim(),
+        cover_image_url: payload.coverImageUrl?.trim() || null,
+        interest_tag: payload.interestTag?.trim() || null,
+        is_private: Boolean(payload.isPrivate),
+        created_by: userId,
+      })
+      .select('*')
+      .single();
+    const group = throwIfError(groupResult) as Row;
+
+    throwIfError(
+      await this.supabase.from('group_members').insert({
+        group_id: group.id,
+        user_id: userId,
+        role: 'owner',
+      }),
+    );
+
+    const groups = await this.getGroups(userId);
+    const createdGroup = groups.find((item) => item.id === group.id);
+    if (!createdGroup) {
+      throw new Error('No pudimos recargar el grupo.');
+    }
+    return createdGroup;
   }
 
   async joinGroup(userId: string, groupId: string): Promise<GroupSummary> {

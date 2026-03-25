@@ -44,19 +44,19 @@ export function WelcomePage() {
   return (
     <AuthLayout
       title="Bienvenida, hermana"
-      subtitle="Una red social cuidada para compartir fe, pedidos de oración, testimonios y comunidad con paz."
+      subtitle="Una comunidad cuidada para compartir fe, oracion y compania."
     >
       <div className="hero-card">
         <p>
-          Tu testimonio puede inspirar a otras. Tu oración puede sostener un corazón. Tu voz
-          merece un espacio cálido y seguro.
+          Tu testimonio puede inspirar a otras. Tu oracion puede sostener un corazon. Tu voz
+          merece un espacio calido y seguro.
         </p>
         <div className="auth-actions">
           <Link className="button button--primary" to="/auth/register">
             Crear cuenta
           </Link>
           <Link className="button button--secondary" to="/auth/login">
-            Iniciar sesión
+            Iniciar sesion
           </Link>
         </div>
       </div>
@@ -67,8 +67,8 @@ export function WelcomePage() {
 export function LoginPage() {
   const { backend, refreshSession } = useApp();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('ana@luzenred.app');
-  const [password, setPassword] = useState('Password123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -87,11 +87,19 @@ export function LoginPage() {
       setError(null);
       const session = await backend.signIn({ email, password });
       await refreshSession();
-      navigate(session.user?.isOnboardingComplete ? '/app/feed' : '/onboarding', {
+      const activeSession = await backend.getSession();
+      const currentUser = session.user || activeSession.user;
+
+      if (!currentUser) {
+        setError('No pudimos cargar tu perfil. Intenta nuevamente en unos segundos.');
+        return;
+      }
+
+      navigate(currentUser.isOnboardingComplete ? '/app/feed' : '/onboarding', {
         replace: true,
       });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'No pudimos iniciar sesión.');
+      setError(submitError instanceof Error ? submitError.message : 'No pudimos iniciar sesion.');
     } finally {
       setIsSubmitting(false);
     }
@@ -108,26 +116,34 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      title="Volvé a tu comunidad"
-      subtitle="Compartí lo que Dios puso en tu corazón y reencontrate con tus hermanas."
+      title="Volve a tu comunidad"
+      subtitle="Tu sesion queda guardada en este dispositivo hasta que decidas cerrarla."
     >
       <form className="stack-lg" onSubmit={handleSubmit}>
         {error ? <MessageBanner tone="warning">{error}</MessageBanner> : null}
-        <InputField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <InputField
-          label="Contraseña"
+          label="Email"
+          type="email"
+          value={email}
+          autoComplete="email"
+          placeholder="vos@ejemplo.com"
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <InputField
+          label="Contrasena"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          onChange={(event) => setPassword(event.target.value)}
         />
         <Button type="submit" fullWidth disabled={isSubmitting}>
-          {isSubmitting ? 'Entrando...' : 'Iniciar sesión'}
+          {isSubmitting ? 'Entrando...' : 'Iniciar sesion'}
         </Button>
         <Button type="button" variant="soft" fullWidth onClick={handleGoogleLogin}>
           Continuar con Google
         </Button>
         <div className="auth-links">
-          <Link to="/auth/recover">Recuperar contraseña</Link>
+          <Link to="/auth/recover">Recuperar contrasena</Link>
           <Link to="/auth/register">Crear una cuenta</Link>
         </div>
       </form>
@@ -142,6 +158,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
@@ -155,16 +172,27 @@ export function RegisterPage() {
     }
 
     if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden.');
+      setError('Las contrasenas no coinciden.');
       return;
     }
 
     try {
       setIsSubmitting(true);
       setError(null);
-      await backend.signUp({ email, password });
+      setMessage(null);
+      const session = await backend.signUp({ email, password });
       await refreshSession();
-      navigate('/onboarding', { replace: true });
+      const activeSession = await backend.getSession();
+      const currentUser = session.user || activeSession.user;
+
+      if (currentUser) {
+        navigate('/onboarding', { replace: true });
+        return;
+      }
+
+      setMessage(
+        'Tu cuenta fue creada. Revisa tu correo si tu proveedor de acceso pide confirmacion antes de continuar.',
+      );
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'No pudimos crear tu cuenta.');
     } finally {
@@ -174,24 +202,34 @@ export function RegisterPage() {
 
   return (
     <AuthLayout
-      title="Creá tu espacio seguro"
-      subtitle="Diseñada para mujeres cristianas que quieren crecer en fe, oración y comunidad."
+      title="Crea tu acceso"
+      subtitle="Despues vas a establecer tu nombre visible y tu usuario. No hace falta apellido."
     >
       <form className="stack-lg" onSubmit={handleSubmit}>
+        {message ? <MessageBanner tone="success">{message}</MessageBanner> : null}
         {error ? <MessageBanner tone="warning">{error}</MessageBanner> : null}
-        <InputField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <InputField
-          label="Contraseña"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          hint="Usá al menos 8 caracteres."
+          label="Email"
+          type="email"
+          value={email}
+          autoComplete="email"
+          placeholder="vos@ejemplo.com"
+          onChange={(event) => setEmail(event.target.value)}
         />
         <InputField
-          label="Confirmar contraseña"
+          label="Contrasena"
+          type="password"
+          value={password}
+          autoComplete="new-password"
+          onChange={(event) => setPassword(event.target.value)}
+          hint="Usa al menos 8 caracteres."
+        />
+        <InputField
+          label="Confirmar contrasena"
           type="password"
           value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
+          autoComplete="new-password"
+          onChange={(event) => setConfirmPassword(event.target.value)}
         />
         <Button type="submit" fullWidth disabled={isSubmitting}>
           {isSubmitting ? 'Creando cuenta...' : 'Crear cuenta'}
@@ -222,25 +260,31 @@ export function RecoverPage() {
     try {
       setError(null);
       await backend.requestPasswordReset(email);
-      setMessage('Si el email existe, te enviamos instrucciones para restablecer tu contraseña.');
+      setMessage('Si el email existe, te enviamos instrucciones para restablecer tu contrasena.');
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : 'No pudimos iniciar la recuperación.',
+          : 'No pudimos iniciar la recuperacion.',
       );
     }
   }
 
   return (
     <AuthLayout
-      title="Recuperar contraseña"
+      title="Recuperar contrasena"
       subtitle="Vamos a ayudarte a volver a entrar con calma y seguridad."
     >
       <form className="stack-lg" onSubmit={handleSubmit}>
         {message ? <MessageBanner tone="success">{message}</MessageBanner> : null}
         {error ? <MessageBanner tone="warning">{error}</MessageBanner> : null}
-        <InputField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <InputField
+          label="Email"
+          type="email"
+          value={email}
+          autoComplete="email"
+          onChange={(event) => setEmail(event.target.value)}
+        />
         <Button type="submit" fullWidth>
           Enviar enlace
         </Button>
@@ -253,22 +297,44 @@ export function RecoverPage() {
 }
 
 export function AuthCallbackPage() {
-  const { refreshSession } = useApp();
+  const { backend, refreshSession } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const timeout = setTimeout(async () => {
-      await refreshSession();
-      navigate('/app/feed', { replace: true });
-    }, 1200);
+    let cancelled = false;
 
-    return () => clearTimeout(timeout);
-  }, [navigate, refreshSession]);
+    const timeout = window.setTimeout(async () => {
+      try {
+        await refreshSession();
+        const session = await backend.getSession();
+
+        if (cancelled) return;
+
+        if (!session.user) {
+          navigate('/auth/login', { replace: true });
+          return;
+        }
+
+        navigate(session.user.isOnboardingComplete ? '/app/feed' : '/onboarding', {
+          replace: true,
+        });
+      } catch {
+        if (!cancelled) {
+          navigate('/auth/login', { replace: true });
+        }
+      }
+    }, 900);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [backend, navigate, refreshSession]);
 
   return (
     <AuthLayout
       title="Estamos preparando tu entrada"
-      subtitle="Un momento, estamos asegurando tu sesión para llevarte a la comunidad."
+      subtitle="Un momento, estamos asegurando tu sesion para llevarte a la comunidad."
     >
       <div className="auth-loader">
         <div className="loading-state__dot" />

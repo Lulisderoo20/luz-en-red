@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '@/app/AppContext';
 import { Avatar } from '@/components/common/Avatar';
 import { Button } from '@/components/common/Button';
+import { ImagePickerField } from '@/components/common/ImagePickerField';
 import { InputField, TextareaField } from '@/components/common/FormFields';
 import { Card, EmptyState, LoadingState, MessageBanner, SectionHeader } from '@/components/common/Surface';
 import { PostCard } from '@/components/feed/PostCard';
@@ -397,7 +398,13 @@ export function EditProfilePage() {
             <InputField label="Nombre visible" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
             <InputField label="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
           </div>
-          <InputField label="Avatar (URL)" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+          <ImagePickerField
+            label="Avatar"
+            value={avatarUrl}
+            onChange={setAvatarUrl}
+            hint="Podés pegar una URL o elegir una imagen desde tu dispositivo."
+            previewLabel="Avatar"
+          />
           <TextareaField label="Bio" rows={4} value={bio} onChange={(e) => setBio(e.target.value)} />
           <div className="grid-two">
             <InputField label="Denominación" value={denomination} onChange={(e) => setDenomination(e.target.value)} />

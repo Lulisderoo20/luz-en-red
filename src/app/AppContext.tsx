@@ -24,6 +24,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const session = await backend.getSession();
       setUser(session.user);
+    } catch {
+      setUser(null);
     } finally {
       setIsBootstrapping(false);
     }

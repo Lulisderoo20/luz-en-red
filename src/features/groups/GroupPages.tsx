@@ -1,12 +1,21 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { FormEvent, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useApp } from '@/app/AppContext';
 import { Avatar } from '@/components/common/Avatar';
+import { Button } from '@/components/common/Button';
+import { ImagePickerField } from '@/components/common/ImagePickerField';
+import { InputField, TextareaField } from '@/components/common/FormFields';
 import { GroupCard } from '@/components/groups/GroupCard';
 import { PostCard } from '@/components/feed/PostCard';
 import { PrayerCard } from '@/components/prayers/PrayerCard';
-import { EmptyState, LoadingState, MessageBanner, SectionHeader } from '@/components/common/Surface';
+import {
+  Card,
+  EmptyState,
+  LoadingState,
+  MessageBanner,
+  SectionHeader,
+} from '@/components/common/Surface';
 import { useAsyncData } from '@/hooks/useAsyncData';
 
 export function GroupsPage() {
@@ -36,8 +45,13 @@ export function GroupsPage() {
     <div className="page">
       <SectionHeader
         eyebrow="Comunidades"
-        title="Encontrá tu lugar"
-        description="Grupos temáticos para crecer con otras cristianas en un marco sano y cuidado."
+        title="Encontra tu lugar"
+        description="Cada hermana puede crear o sumarse a grupos tematicos para caminar en fe con compania."
+        action={
+          <Link className="button button--primary" to="/app/groups/new">
+            Crear grupo
+          </Link>
+        }
       />
 
       {message ? <MessageBanner tone="success">{message}</MessageBanner> : null}
@@ -45,8 +59,13 @@ export function GroupsPage() {
 
       {!isLoading && data.length === 0 ? (
         <EmptyState
-          title="Todavía no hay grupos visibles"
-          description="Pronto vas a encontrar comunidades temáticas para oración, estudio bíblico y más."
+          title="Todavia no hay grupos visibles"
+          description="Podes crear el primero y abrir un espacio cuidado para otras hermanas."
+          action={
+            <Link className="button button--primary" to="/app/groups/new">
+              Crear grupo
+            </Link>
+          }
         />
       ) : null}
 
@@ -55,6 +74,102 @@ export function GroupsPage() {
           <GroupCard key={group.id} group={group} onJoin={() => handleJoin(group.id)} />
         ))}
       </div>
+    </div>
+  );
+}
+
+export function CreateGroupPage() {
+  const { backend, user } = useApp();
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [interestTag, setInterestTag] = useState('');
+  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!user) return null;
+  const currentUser = user;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+
+    if (!name.trim() || !description.trim()) {
+      setError('Completa el nombre y la descripcion del grupo.');
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsSubmitting(true);
+      const group = await backend.createGroup(currentUser.id, {
+        name,
+        description,
+        coverImageUrl,
+        interestTag,
+        isPrivate,
+      });
+      navigate(`/app/groups/${group.slug}`, { replace: true });
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'No pudimos crear el grupo.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="page">
+      <SectionHeader
+        eyebrow="Nuevo grupo"
+        title="Crea una comunidad con proposito"
+        description="Cualquier usuaria puede abrir un espacio tematico y reunir hermanas alrededor de una misma carga espiritual."
+      />
+
+      <Card>
+        <form className="stack-xl" onSubmit={handleSubmit}>
+          {error ? <MessageBanner tone="warning">{error}</MessageBanner> : null}
+          <InputField
+            label="Nombre del grupo"
+            value={name}
+            placeholder="Ej. Mujeres de oracion de los jueves"
+            onChange={(event) => setName(event.target.value)}
+          />
+          <TextareaField
+            label="Descripcion"
+            rows={5}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            hint="Conta con claridad para quien es el grupo y como se cuidara la comunidad."
+          />
+          <div className="grid-two">
+            <InputField
+              label="Tema principal"
+              value={interestTag}
+              placeholder="Oracion, maternidad, noviazgo..."
+              onChange={(event) => setInterestTag(event.target.value)}
+            />
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(event) => setIsPrivate(event.target.checked)}
+              />
+              <span>Hacerlo privado para que solo entren miembros aprobados o invitadas.</span>
+            </label>
+          </div>
+          <ImagePickerField
+            label="Portada del grupo"
+            value={coverImageUrl}
+            onChange={setCoverImageUrl}
+            hint="Podes pegar una URL o subir una imagen desde tu dispositivo."
+            previewLabel="Portada del grupo"
+          />
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Creando grupo...' : 'Crear grupo'}
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
@@ -103,7 +218,7 @@ export function GroupDetailPage() {
             description="Reflexiones, testimonios y contenido interno."
             action={
               data.joinedByMe ? (
-                <Link className="button button--soft" to={`/app/feed/new`}>
+                <Link className="button button--soft" to="/app/feed/new">
                   Crear post
                 </Link>
               ) : null
@@ -111,8 +226,8 @@ export function GroupDetailPage() {
           />
           {data.posts.length === 0 ? (
             <EmptyState
-              title="Sin publicaciones todavía"
-              description="Sé la primera en compartir una palabra para esta comunidad."
+              title="Sin publicaciones todavia"
+              description="Se la primera en compartir una palabra para esta comunidad."
             />
           ) : (
             data.posts.map((post) => (
@@ -133,19 +248,29 @@ export function GroupDetailPage() {
             ))
           )}
 
-          <SectionHeader title="Pedidos de oración del grupo" description="Intercesión con más cercanía y contexto." />
-          {data.prayerRequests.map((prayer) => (
-            <PrayerCard
-              key={prayer.id}
-              prayer={prayer}
-              onSupport={() =>
-                backend.togglePrayerSupport(currentUser.id, prayer.id).then(() =>
-                  setRefreshToken((value) => value + 1),
-                )
-              }
-              onComment={() => undefined}
+          <SectionHeader
+            title="Pedidos de oracion del grupo"
+            description="Intercesion con mas cercania y contexto."
+          />
+          {data.prayerRequests.length === 0 ? (
+            <EmptyState
+              title="Sin pedidos cargados"
+              description="Todavia no hay pedidos internos para este grupo."
             />
-          ))}
+          ) : (
+            data.prayerRequests.map((prayer) => (
+              <PrayerCard
+                key={prayer.id}
+                prayer={prayer}
+                onSupport={() =>
+                  backend.togglePrayerSupport(currentUser.id, prayer.id).then(() =>
+                    setRefreshToken((value) => value + 1),
+                  )
+                }
+                onComment={() => undefined}
+              />
+            ))
+          )}
         </section>
 
         <aside className="stack-lg">

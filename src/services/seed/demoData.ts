@@ -1,4 +1,6 @@
 import {
+  AgendaItemCategory,
+  AgendaItemStatus,
   NotificationType,
   PostType,
   PrayerStatus,
@@ -129,6 +131,21 @@ export interface DemoPrayerCommentRecord {
   createdAt: string;
 }
 
+export interface DemoAgendaItemRecord {
+  id: string;
+  userId: string;
+  groupId: string | null;
+  title: string;
+  description: string | null;
+  location: string | null;
+  category: AgendaItemCategory;
+  startsAt: string;
+  endsAt: string | null;
+  status: AgendaItemStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DemoNotificationRecord {
   id: string;
   recipientId: string;
@@ -181,6 +198,7 @@ export interface DemoStore {
   prayerRequests: DemoPrayerRequestRecord[];
   prayerSupports: DemoPrayerSupportRecord[];
   prayerComments: DemoPrayerCommentRecord[];
+  agendaItems: DemoAgendaItemRecord[];
   notifications: DemoNotificationRecord[];
   reports: DemoReportRecord[];
   devotionals: DemoDevotionalRecord[];
@@ -210,7 +228,7 @@ export const demoCredentials = [
 
 export function createDefaultDemoStore(): DemoStore {
   return {
-    currentUserId: '11111111-1111-1111-1111-111111111111',
+    currentUserId: null,
     accounts: [
       {
         userId: '11111111-1111-1111-1111-111111111111',
@@ -542,6 +560,7 @@ export function createDefaultDemoStore(): DemoStore {
         createdAt: timestamp(5),
       },
     ],
+    agendaItems: [],
     notifications: [
       {
         id: 'n-1',
@@ -615,5 +634,43 @@ export function createDefaultDemoStore(): DemoStore {
         isFeatured: false,
       },
     ],
+  };
+}
+
+function asArray<T>(value: unknown, fallback: T[]) {
+  return Array.isArray(value) ? (value as T[]) : fallback;
+}
+
+export function migrateDemoStore(value: unknown): DemoStore {
+  const defaults = createDefaultDemoStore();
+
+  if (!value || typeof value !== 'object') {
+    return defaults;
+  }
+
+  const partial = value as Partial<DemoStore> & { agendaItems?: DemoAgendaItemRecord[] };
+
+  return {
+    currentUserId:
+      typeof partial.currentUserId === 'string' || partial.currentUserId === null
+        ? partial.currentUserId
+        : defaults.currentUserId,
+    accounts: asArray(partial.accounts, defaults.accounts),
+    profiles: asArray(partial.profiles, defaults.profiles),
+    follows: asArray(partial.follows, defaults.follows),
+    blocks: asArray(partial.blocks, defaults.blocks),
+    groups: asArray(partial.groups, defaults.groups),
+    groupMembers: asArray(partial.groupMembers, defaults.groupMembers),
+    posts: asArray(partial.posts, defaults.posts),
+    postComments: asArray(partial.postComments, defaults.postComments),
+    postReactions: asArray(partial.postReactions, defaults.postReactions),
+    savedPosts: asArray(partial.savedPosts, defaults.savedPosts),
+    prayerRequests: asArray(partial.prayerRequests, defaults.prayerRequests),
+    prayerSupports: asArray(partial.prayerSupports, defaults.prayerSupports),
+    prayerComments: asArray(partial.prayerComments, defaults.prayerComments),
+    agendaItems: asArray(partial.agendaItems, defaults.agendaItems),
+    notifications: asArray(partial.notifications, defaults.notifications),
+    reports: asArray(partial.reports, defaults.reports),
+    devotionals: asArray(partial.devotionals, defaults.devotionals),
   };
 }

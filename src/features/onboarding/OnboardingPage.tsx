@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useApp } from '@/app/AppContext';
 import { Button } from '@/components/common/Button';
+import { ImagePickerField } from '@/components/common/ImagePickerField';
 import { InputField, TextareaField } from '@/components/common/FormFields';
 import { Card, MessageBanner, SectionHeader } from '@/components/common/Surface';
 import { validateOnboarding } from '@/lib/validation';
@@ -93,8 +94,8 @@ export function OnboardingPage() {
       <Card className="hero-card hero-card--compact">
         <SectionHeader
           eyebrow="Onboarding"
-          title="Contanos un poco sobre vos"
-          description="Queremos recibirte con calidez y ayudarte a conectar con hermanas afines desde el primer día."
+          title="Establece tu usuario visible"
+          description="Queremos recibirte con calidez y ayudarte a conectar con hermanas afines desde el primer dia. Puede ser solo tu nombre."
         />
       </Card>
 
@@ -105,19 +106,24 @@ export function OnboardingPage() {
             <InputField
               label="Nombre visible"
               value={displayName}
+              placeholder="Por ejemplo, Camila"
+              hint="No hace falta apellido."
               onChange={(e) => setDisplayName(e.target.value)}
             />
             <InputField
               label="Username"
               value={username}
+              placeholder="camila.en.fe"
               onChange={(e) => setUsername(e.target.value)}
               hint="Solo letras, números, punto o guion bajo."
             />
           </div>
-          <InputField
-            label="Foto de perfil (URL)"
+          <ImagePickerField
+            label="Foto de perfil"
             value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
+            onChange={setAvatarUrl}
+            hint="Podés pegar una URL o explorar tu dispositivo."
+            previewLabel="Foto de perfil"
           />
           <TextareaField label="Breve bio" rows={4} value={bio} onChange={(e) => setBio(e.target.value)} />
           <div className="grid-two">
